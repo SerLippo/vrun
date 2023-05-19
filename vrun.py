@@ -5,7 +5,7 @@ Description: Ser_Lip's vcs command script
 TODO: >
   vcs vlogan,vcs,sim opts logic
   yaml optimize
-  regr logic
+  regr parallel logic
   other optimize
 """
 
@@ -21,6 +21,7 @@ import datetime
 class seedGen(object):
   """
   An object that will generate a pseudo-random seed for test iterations.
+  Unused now!
   """
   def __init__(self, start_seed):
     self.start_seed = start_seed
@@ -45,8 +46,8 @@ def parse_args(cwd):
                       help="The regression list to run.", dest="regr")
   parser.add_argument("-o", "--output", type=str,
                       help="Output directory path.", dest="o")
-  parser.add_argument("-v", "--verbose", type=str, default="UVM_HIGH",
-                      help="The UVM verbose in simulation.")
+  parser.add_argument("-v", "--verbose", type=str, default="UVM_LOW",
+                      help="The UVM verbose in simulation.", dest="v")
   parser.add_argument("-time", "--timeout", type=int, default=300,
                       help="The command timeout limit.", dest="time")
   parser.add_argument("-co", "--compile_only", action="store_true", default=False,
@@ -54,9 +55,11 @@ def parse_args(cwd):
   parser.add_argument("-so", "--simulate_only", action="store_true", default=False,
                       help="Simulate the generator only.", dest="so")
   parser.add_argument("-copt", "--cmp_opts", type=str, default="",
-                        help="Compile options for the generator.")
+                        help="Compile options for the generator.", dest="copt")
+  parser.add_argument("-eopt", "--elab_opts", type=str, default="",
+                      help="Elabration options for the generator.", dest="eopt")
   parser.add_argument("-sopt", "--sim_opts", type=str, default="",
-                      help="Simulation options for the generator.")
+                      help="Simulation options for the generator.", dest="sopt")
   parser.add_argument("-seed", "--seed", type=int, default=None,
                       help="Randomize seed.", dest="seed")
   parser.add_argument("-iter", "--iterations", type=int, default=1,
@@ -214,7 +217,7 @@ def load_regression_list(regr, regr_list):
       regr_list.append(entry)
 
 
-def gen(matched_list, vcs_opts, args, output_dir, cwd):
+def gen(matched_list, vcs_opts, args, output_dir):
   """
   Run the simulator.
   """
@@ -226,34 +229,77 @@ def gen(matched_list, vcs_opts, args, output_dir, cwd):
              "-CFLAGS '--std=c99 -fno-extended-identifiers' "
              "-LDFLAGS '-Wl,--no-as-needed' -debug_acc+all "
              "-l %s/compile/vcs.log -o %s/compile/vcs.simv" % (output_dir, output_dir))
-  sim_cmd = "%s/compile/vcs.simv " % output_dir
+  sim_cmd = "%s/compile/vcs.simv +UVM_VERBOSITY=%s" % (output_dir, args.v)
 
   if not args.so:
     cmp_output = create_output(output_dir+"/compile", args.clean)
     os.chdir(cmp_output)
+    logging.info("------ Starting vlogan UVM ------")
     run_cmd(vlogan_cmd, args.time)
-    #with open("%s/f.lst" % cwd, "w") as f:
-    #  f.write("%s" % vcs_opts["flist"])
-    vlogan_cmd = vlogan_cmd + " " + vcs_opts["flist"]
+    vlogan_cmd = vlogan_cmd + " " + vcs_opts["flist"].strip("\n")
     logging.info("------ Starting vlogan ------")
     run_cmd(vlogan_cmd, args.time)
-    logging.info("------ Finished ------:")
-    vcs_cmd = vcs_cmd + " -top mcdf_tb"
+    logging.info("------ Finished ------")
+    vcs_cmd = vcs_cmd + " -top %s" % vcs_opts["top"].strip("\n")
     logging.info("------ Starting vcs ------")
     run_cmd(vcs_cmd, args.time)
-    logging.info("------ Finished ------:")
+    logging.info("------ Finished ------")
   if not args.co:
     for test in matched_list:
       for i in range(test["iterations"]):
         if i != 0:
           test["seed"] = random.getrandbits(31)
         sim_output = create_output(output_dir+"/"+test["test"]+"_%s"%test["seed"], args.clean)
-        os.chdir(cmp_output)
+        os.chdir(sim_output)
         sim_test_cmd = sim_cmd + "+UVM_TESTNAME=%s -l %s/sim.log" % (test["test"], sim_output)
         logging.info("------ Starting sim ------")
         run_cmd(sim_test_cmd, args.time)
-        logging.info("------ Finished ------:")
+        logging.info("------ Finished ------")
 
+
+def extractTest(args, test_list, matched_list):
+  """
+  extractTest for matched list.
+  """
+  if args.test is not None:
+    for entry in test_list:
+      if entry["test"] == args.test:
+        matched_list.append(entry)
+        if args.seed is not None:
+          matched_list[-1]["seed"] = args.seed
+        elif "seed" in entry:
+          matched_list[-1]["seed"] = entry["seed"]
+        else:
+          matched_list[-1]["seed"] = random.getrandbits(31)
+        if args.iter != 0:
+          matched_list[-1]["iterations"] = args.iter
+        elif "iterations" in entry:
+          matched_list[-1]["iterations"] = entry["iterations"]
+        else:
+          matched_list[-1]["iterations"] = 1
+  elif args.regr is not None:
+    regr_list = []
+    load_regression_list(args.regr, regr_list)
+    for entry in test_list:
+      for regr_entry in regr_list:
+        if entry["test"] == regr_entry["test"]:
+          matched_list.append(entry)
+          if args.seed is not None:
+            matched_list[-1]["seed"] = args.seed
+          elif "seed" in regr_entry:
+            matched_list[-1]["seed"] = regr_entry["seed"]
+          elif "seed" in entry:
+            matched_list[-1]["seed"] = entry["seed"]
+          else:
+            matched_list[-1]["seed"] = random.getrandbits(31)
+          if args.iter != 1:
+            matched_list[-1]["iterations"] = args.iter
+          elif "iterations" in regr_entry:
+            matched_list[-1]["iterations"] = regr_entry["iterations"]
+          elif "iterations" in entry:
+            matched_list[-1]["iterations"] = entry["iterations"]
+          else:
+            matched_list[-1]["iterations"] = 1
 
 
 def main():
@@ -264,13 +310,9 @@ def main():
     #cwd = os.path.dirname(os.path.realpath(__file__))
     cwd = os.getcwd()
     args = parse_args(cwd)
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    logging.info("Starting to run VCS script in cwd:\n%s" % cwd)
-    if args.seed is not None:
-      mainSeed = seedGen(args.seed)
-    else:
-      mainSeed = seedGen(0)
+    FORMAT = "%(asctime)-15s %(levelname)s: %(message)s"
+    logging.basicConfig(format=FORMAT,level=logging.INFO)
+    logging.info("Starting to run VCS script in cwd: %s" % cwd)
     output_dir = create_output(args.o, args.clean)
 
     vcs_opts = {}
@@ -278,51 +320,14 @@ def main():
     load_config(args.cfg, vcs_opts, test_list)
 
     matched_list = []
-    if args.test is not None:
-      for entry in test_list:
-        if entry["test"] == args.test:
-          matched_list.append(entry)
-          if args.seed is not None:
-            matched_list[-1]["seed"] = mainSeed.get()
-          elif "seed" in entry:
-            matched_list[-1]["seed"] = entry["seed"]
-          else:
-            matched_list[-1]["seed"] = mainSeed.getRand()
-          if args.iter != 0:
-            matched_list[-1]["iterations"] = args.iter
-          elif "iterations" in entry:
-            matched_list[-1]["iterations"] = entry["iterations"]
-          else:
-            matched_list[-1]["iterations"] = 1
-    elif args.regr is not None:
-      regr_list = []
-      load_regression_list(args.regr, regr_list)
-      for entry in test_list:
-        for regr_entry in regr_list:
-          if entry["test"] == regr_entry["test"]:
-            matched_list.append(entry)
-            if args.seed is not None:
-              matched_list[-1]["seed"] = mainSeed.get()
-            elif "seed" in regr_entry:
-              matched_list[-1]["seed"] = regr_entry["seed"]
-            elif "seed" in entry:
-              matched_list[-1]["seed"] = entry["seed"]
-            else:
-              matched_list[-1]["seed"] = mainSeed.getRand()
-            if args.iter != 1:
-              matched_list[-1]["iterations"] = args.iter
-            elif "iterations" in regr_entry:
-              matched_list[-1]["iterations"] = regr_entry["iterations"]
-            elif "iterations" in entry:
-              matched_list[-1]["iterations"] = entry["iterations"]
-            else:
-              matched_list[-1]["iterations"] = 1
+    extractTest(args, test_list, matched_list)
 
-    gen(matched_list, vcs_opts, args, output_dir, cwd)
+    gen(matched_list, vcs_opts, args, output_dir)
 
   except KeyboardInterrupt:
     logging.info("\nExited Ctrl+C from user request.")
     sys.exit(1)
+
 
 if __name__ == "__main__":
   main()
