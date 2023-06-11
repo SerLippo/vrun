@@ -1,5 +1,5 @@
 """
-File: vcs.py
+File: vrun.py
 Author: Ser_Lip
 Description: Ser_Lip's vcs command script
 TODO: >
@@ -54,11 +54,11 @@ def parse_args(cwd):
                       help="Compile the generator only.", dest="co")
   parser.add_argument("-so", "--simulate_only", action="store_true", default=False,
                       help="Simulate the generator only.", dest="so")
-  parser.add_argument("-copt", "--cmp_opts", type=str, default="",
+  parser.add_argument("-copt", "--cmp_opts", type=str, default=None,
                         help="Compile options for the generator.", dest="copt")
-  parser.add_argument("-eopt", "--elab_opts", type=str, default="",
+  parser.add_argument("-eopt", "--elab_opts", type=str, default=None,
                       help="Elabration options for the generator.", dest="eopt")
-  parser.add_argument("-sopt", "--sim_opts", type=str, default="",
+  parser.add_argument("-sopt", "--sim_opts", type=str, default=None,
                       help="Simulation options for the generator.", dest="sopt")
   parser.add_argument("-seed", "--seed", type=int, default=None,
                       help="Randomize seed.", dest="seed")
@@ -164,25 +164,39 @@ def create_output(output, clean, prefix="out_"):
   return output
 
 
-flist_cnt = 0
-def load_config(cfg, vcs_opts, test_list):
+flistCnt = 0
+def loadConfig(args, vcs_opts, test_list):
   """
   Extract script config from YAML.
   """
-  yaml_data = read_yaml(cfg)
-  global flist_cnt
+  yaml_data = read_yaml(args.cfg)
+  global flistCnt
   for entry in yaml_data:
     if "import" in entry:
-      load_config(os.path.expandvars(entry['import']), vcs_opts, test_list)
+      loadConfig(os.path.expandvars(entry['import']), vcs_opts, test_list)
     elif "vcs" in entry:
       vcs_opts.update(entry)
-      flist_cnt += 1
-      if flist_cnt > 1:
-        logging.error("Found more than one flist entry in config.")
+      flistCnt += 1
+      if flistCnt > 1:
+        logging.error("Found more than 1 vcs_opts entry in config.")
         sys.exit(1)
       if "flist" not in entry:
         logging.error("Didn't find flist in vcs_opts.")
         sys.exit(1)
+      # Compile options
+      cmpOpts = ""
+      if args.copt is not None:
+        cmpOpts += " " + args.copt
+      elif "cmp_opts" in entry:
+        cmpOpts += " " + entry["cmp_opts"]
+      vcs_opts["cmp_opts"] = cmpOpts
+      # Elaboration options
+      elabOpts = ""
+      if args.eopt is not None:
+        elabOpts += " " + args.eopt
+      elif "elab_opts" in entry:
+        elabOpts += " " + entry["elab_opts"]
+      vcs_opts["elab_opts"] = elabOpts
     elif "test" in entry:
       test_list.append(entry)
 
@@ -265,18 +279,27 @@ def extractTest(args, test_list, matched_list):
     for entry in test_list:
       if entry["test"] == args.test:
         matched_list.append(entry)
+        # Seed
         if args.seed is not None:
           matched_list[-1]["seed"] = args.seed
         elif "seed" in entry:
           matched_list[-1]["seed"] = entry["seed"]
         else:
           matched_list[-1]["seed"] = random.getrandbits(31)
+        # Iterations
         if args.iter != 0:
           matched_list[-1]["iterations"] = args.iter
         elif "iterations" in entry:
           matched_list[-1]["iterations"] = entry["iterations"]
         else:
-          matched_list[-1]["iterations"] = 1
+          matched_list[-1]["iterations"] = args.iter
+        # Simulation options
+        simOpts = ""
+        if args.sopt is not None:
+          simOpts += " " + args.sopt
+        elif "sim_opts" in entry:
+          simOpts += " " + entry["sim_opts"]
+        matched_list[-1]["sim_opts"] = simOpts
   elif args.regr is not None:
     regr_list = []
     load_regression_list(args.regr, regr_list)
@@ -284,6 +307,7 @@ def extractTest(args, test_list, matched_list):
       for regr_entry in regr_list:
         if entry["test"] == regr_entry["test"]:
           matched_list.append(entry)
+          # Seed
           if args.seed is not None:
             matched_list[-1]["seed"] = args.seed
           elif "seed" in regr_entry:
@@ -292,6 +316,7 @@ def extractTest(args, test_list, matched_list):
             matched_list[-1]["seed"] = entry["seed"]
           else:
             matched_list[-1]["seed"] = random.getrandbits(31)
+          # Iterations
           if args.iter != 1:
             matched_list[-1]["iterations"] = args.iter
           elif "iterations" in regr_entry:
@@ -299,7 +324,16 @@ def extractTest(args, test_list, matched_list):
           elif "iterations" in entry:
             matched_list[-1]["iterations"] = entry["iterations"]
           else:
-            matched_list[-1]["iterations"] = 1
+            matched_list[-1]["iterations"] = args.iter
+          # Simulation options
+          simOpts = ""
+          if args.sopt is not None:
+            simOpts += " " + args.sopt
+          elif "sim_opts" in regr_entry:
+            simOpts += " " + regr_entry["sim_opts"]
+          elif "sim_opts" in entry:
+            simOpts += " " + entry["sim_opts"]
+          matched_list[-1]["sim_opts"] = simOpts
 
 
 def main():
@@ -317,7 +351,7 @@ def main():
 
     vcs_opts = {}
     test_list = []
-    load_config(args.cfg, vcs_opts, test_list)
+    loadConfig(args, vcs_opts, test_list)
 
     matched_list = []
     extractTest(args, test_list, matched_list)
