@@ -5,7 +5,6 @@ Description: Ser_Lip's vcs command script
 TODO: >
   yaml optimize
   regr parallel logic
-  result checker, not right
   code coverage
   dve wave, vdb
   fsdb
@@ -275,6 +274,7 @@ def gen(matchedList, vcsOpts, args, outputDir):
   Returns:
     Nothing
   """
+  global errorCnt
   if args.co is False and len(matchedList) == 0:
     return
   vloganCmd = ("vlogan -full64 -sverilog -lca -ntb_opts uvm-1.2 -timescale=1ps/1ps "
@@ -315,16 +315,23 @@ def gen(matchedList, vcsOpts, args, outputDir):
           f.write(simTestCmd)
         runCmd(simTestCmd, args.time)
         with open("sim.log", "r") as f:
-          with open("error_message", "w") as em:
-            for line in f.readlines():
-              if "Error" or "error" or "UVM_ERROR" or "UVM_FATAL" in line:
+          em = open("error_message.log", "w")
+          wm = open("warning_message.log", "w")
+          for line in f.readlines():
+            if line.startswith("UVM_ERROR") or line.startswith("UVM_FATAL") or "Error" in line:
+              if line != "UVM_ERROR :    0\n" and line != "UVM_FATAL :    0\n":
                 em.write(line)
-          if os.path.getsize("error_message") == 0:
+            elif line.startswith("UVM_WARNING"):
+              wm.write(line)
+          em.close()
+          wm.close()
+          if os.path.getsize("error_message.log") == 0:
             with open("PASS", "w") as fp:
               fp.write("PASS")
           else:
             with open("FAIL", "w") as ff:
               ff.write("FAIL")
+              errorCnt += 1
         logging.info("------ Finished ------")
 
 
@@ -401,6 +408,7 @@ def extractTest(args, testList, matchedList):
           matchedList[-1]["sim_opts"] = simOpts
 
 
+errorCnt = 0
 def main():
   """
   This is the main program.
@@ -423,6 +431,29 @@ def main():
     extractTest(args, testList, matchedList)
 
     gen(matchedList, vcsOpts, args, outputDir)
+
+    if errorCnt == 0:
+      logging.info("\n" +
+"======================================\n" +
+"=  =====      =      ======= ======= =\n" +
+"=  =    =    = =     =       =       =\n" +
+"=  =    =   =   =    =       =       =\n" +
+"=  =====   = = = =   ======= ======= =\n" +
+"=  =      =       =        =       = =\n" +
+"=  =     =         =       =       = =\n" +
+"=  =     =         = ======= ======= =\n" +
+"======================================\n")
+    else:
+      logging.info("\n" +
+"======================================\n" +
+"=  ======     =      ======= =       =\n" +
+"=  =         = =        =    =       =\n" +
+"=  =        =   =       =    =       =\n" +
+"=  ======  = = = =      =    =       =\n" +
+"=  =      =       =     =    =       =\n" +
+"=  =     =         =    =    =       =\n" +
+"=  =     =         = ======= ======= =\n" +
+"======================================\n")
 
   except KeyboardInterrupt:
     logging.info("\nExited Ctrl+C from user request.")
