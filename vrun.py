@@ -6,8 +6,6 @@ TODO: >
   yaml optimize
   regr parallel logic
   code coverage
-  dve wave, vdb
-  fsdb
   other optimize
 """
 
@@ -64,7 +62,7 @@ def parseArgs(cwd):
   parser.add_argument("-so", "--simulate_only", action="store_true", default=False,
                       help="Simulate the generator only.", dest="so")
   parser.add_argument("-copt", "--cmp_opts", type=str, default=None,
-                        help="Compile options for the generator.", dest="copt")
+                      help="Compile options for the generator.", dest="copt")
   parser.add_argument("-eopt", "--elab_opts", type=str, default=None,
                       help="Elabration options for the generator.", dest="eopt")
   parser.add_argument("-sopt", "--sim_opts", type=str, default=None,
@@ -73,6 +71,10 @@ def parseArgs(cwd):
                       help="Randomize seed.", dest="seed")
   parser.add_argument("-iter", "--iterations", type=int, default=1,
                       help="Test iterations.", dest="iter")
+  parser.add_argument("-vpd", "--vpd", action="store_true", default=False,
+                      help="Enable DVE vpd dump.", dest="vpd")
+  parser.add_argument("-fsdb", "--fsdb", action="store_true", default=False,
+                      help="Enable Verdi fsdb dump.", dest="fsdb")
   parser.add_argument("-clean", "--clean_output", action="store_true", default=False,
                       help="Clean last run's output.", dest="clean")
   args = parser.parse_args()
@@ -288,6 +290,8 @@ def gen(matchedList, vcsOpts, args, outputDir):
   if not args.so:
     cmp_output = createOutput(outputDir+"/compile", args.clean)
     os.chdir(cmp_output)
+    if args.fsdb:
+      vloganCmd += " -kdb"
     logging.info("------ Starting vlogan UVM ------")
     runCmd(vloganCmd, args.time)
     vloganCmd = vloganCmd + " " + vcsOpts["flist"].strip("\n")
@@ -297,6 +301,8 @@ def gen(matchedList, vcsOpts, args, outputDir):
     runCmd(vloganCmd, args.time)
     logging.info("------ Finished ------")
     vcsCmd = vcsCmd + " -top %s" % vcsOpts["top"].strip("\n")
+    if args.fsdb:
+      vcsCmd += " -kdb"
     logging.info("------ Starting vcs ------")
     with open("vcs.sh", "w") as f:
       f.write(vcsCmd)
@@ -310,6 +316,19 @@ def gen(matchedList, vcsOpts, args, outputDir):
         simOutput = createOutput(outputDir+"/"+test["test"]+"_%s"%test["seed"], True)
         os.chdir(simOutput)
         simTestCmd = simCmd + " +UVM_TESTNAME=%s -l %s/sim.log" % (test["test"], simOutput)
+        if args.vpd or args.fsdb:
+          simTestCmd += " -ucli -do %s/sim.tcl" % simOutput
+          if args.vpd:
+            simTestCmd += " -vpd_file %s/sim.vpd" % simOutput
+          if args.fsdb:
+            simTestCmd += " +fsdb+autoflush +fsdb+all +fsdb+mda"
+        with open("sim.tcl", "w") as f:
+          if args.vpd:
+            f.write("dump -add /*\n")
+          if args.fsdb:
+            f.write("fsdbDumpfile \"sim.fsdb\"\n")
+            f.write("fsdbDumpvars 0 %s\n" % vcsOpts["top"].strip("\n"))
+          f.write("run")
         logging.info("------ Starting sim ------")
         with open("sim.sh", "w") as f:
           f.write(simTestCmd)
