@@ -309,7 +309,7 @@ def gen(matchedList, vcsOpts, args, outputDir):
           test["seed"] = random.getrandbits(31)
         simOutput = createOutput(outputDir+"/"+test["test"]+"_%s"%test["seed"], True)
         os.chdir(simOutput)
-        simTestCmd = simCmd + "+UVM_TESTNAME=%s -l %s/sim.log" % (test["test"], simOutput)
+        simTestCmd = simCmd + " +UVM_TESTNAME=%s -l %s/sim.log" % (test["test"], simOutput)
         logging.info("------ Starting sim ------")
         with open("sim.sh", "w") as f:
           f.write(simTestCmd)
