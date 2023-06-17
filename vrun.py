@@ -75,6 +75,8 @@ def parseArgs(cwd):
                       help="Enable DVE vpd dump.", dest="vpd")
   parser.add_argument("-fsdb", "--fsdb", action="store_true", default=False,
                       help="Enable Verdi fsdb dump.", dest="fsdb")
+  parser.add_argument("-cov", "--cov", action="store_true", default=False,
+                      help="Enable code coverage collect.", dest="cov")
   parser.add_argument("-clean", "--clean_output", action="store_true", default=False,
                       help="Clean last run's output.", dest="clean")
   args = parser.parse_args()
@@ -303,6 +305,8 @@ def gen(matchedList, vcsOpts, args, outputDir):
     vcsCmd = vcsCmd + " -top %s" % vcsOpts["top"].strip("\n")
     if args.fsdb:
       vcsCmd += " -kdb"
+    if args.cov:
+      vcsCmd += " -cm line+tgl+fsm+cond+branch+assert -cm_cond allops -cm_dir %s/cov.vdb" % outputDir
     logging.info("------ Starting vcs ------")
     with open("vcs.sh", "w") as f:
       f.write(vcsCmd)
@@ -329,6 +333,9 @@ def gen(matchedList, vcsOpts, args, outputDir):
             f.write("fsdbDumpfile \"sim.fsdb\"\n")
             f.write("fsdbDumpvars 0 %s\n" % vcsOpts["top"].strip("\n"))
           f.write("run")
+        if args.cov:
+          simTestCmd += " -cm line+tgl+fsm+cond+branch+assert -cm_cond allops"
+          simTestCmd += " -cm_name %s_%s" % (test["test"], test["seed"])
         logging.info("------ Starting sim ------")
         with open("sim.sh", "w") as f:
           f.write(simTestCmd)
