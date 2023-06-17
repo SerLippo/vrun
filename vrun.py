@@ -5,7 +5,6 @@ Description: Ser_Lip's vcs command script
 TODO: >
   yaml optimize
   regr parallel logic
-  code coverage
   other optimize
 """
 
