@@ -3,7 +3,6 @@ File: vrun.py
 Author: Ser_Lip
 Description: Ser_Lip's vcs command script
 TODO: >
-  show test
   yaml optimize
   regr parallel logic
   other optimize
