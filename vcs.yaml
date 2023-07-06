@@ -1,0 +1,21 @@
+- vcs: vcs_command
+  flist: >
+    +incdir+$REPO_BASE
+    +incdir+$REPO_BASE/{src,env,seq_lib,tb,tests}
+    $REPO_BASE/src/xxx_pkg.sv
+    $REPO_BASE/tb/xxx_tb.sv
+  top: xxx_top
+  cmp_opts: xxx
+  elab_opts: xxx
+
+- import: $REPO_BASE/xxx/sub.yaml
+
+- test: xxx_test
+  seed: 123
+  iterations: 5
+  sim_opts: xxx
+
+- test: yyy_test
+  seed: 123
+  iterations: 5
+  sim_opts: xxx
