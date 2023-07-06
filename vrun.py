@@ -3,6 +3,7 @@ File: vrun.py
 Author: Ser_Lip
 Description: Ser_Lip's vcs command script
 TODO: >
+  show test
   yaml optimize
   regr parallel logic
   other optimize
@@ -78,6 +79,8 @@ def parseArgs(cwd):
                       help="Enable code coverage collect.", dest="cov")
   parser.add_argument("-clean", "--clean_output", action="store_true", default=False,
                       help="Clean last run's output.", dest="clean")
+  parser.add_argument("-st", "--show_tests", action="store_true", default=False,
+                      help="Show all test in this repo.", dest="st")
   args = parser.parse_args()
 
   if not args.cfg:
@@ -277,12 +280,13 @@ def gen(matchedList, vcsOpts, args, outputDir):
   Returns:
     Nothing
   """
+  global simed
   global errorCnt
   if args.co is False and len(matchedList) == 0:
     return
-  vloganCmd = ("vlogan -full64 -sverilog -lca -ntb_opts uvm-1.2 -timescale=1ps/1ps "
+  vloganCmd = ("vlogan -full64 -sverilog -lca -ntb_opts uvm-1.2 -timescale=1ps/1ps -kdb "
                 "-l %s/compile/vlogan.log" % outputDir)
-  vcsCmd = ("vcs -full64 -sverilog -lca -ntb_opts uvm-1.2 -partcomp "
+  vcsCmd = ("vcs -full64 -sverilog -lca -ntb_opts uvm-1.2 -partcomp -kdb "
              "-CFLAGS '--std=c99 -fno-extended-identifiers' "
              "-LDFLAGS '-Wl,--no-as-needed' -debug_acc+all "
              "-l %s/compile/vcs.log -o %s/compile/vcs.simv" % (outputDir, outputDir))
@@ -291,8 +295,6 @@ def gen(matchedList, vcsOpts, args, outputDir):
   if not args.so:
     cmp_output = createOutput(outputDir+"/compile", args.clean)
     os.chdir(cmp_output)
-    if args.fsdb:
-      vloganCmd += " -kdb"
     logging.info("------ Starting vlogan UVM ------")
     runCmd(vloganCmd, args.time)
     vloganCmd = vloganCmd + " " + vcsOpts["flist"].strip("\n")
@@ -302,8 +304,6 @@ def gen(matchedList, vcsOpts, args, outputDir):
     runCmd(vloganCmd, args.time)
     logging.info("------ Finished ------")
     vcsCmd = vcsCmd + " -top %s" % vcsOpts["top"].strip("\n")
-    if args.fsdb:
-      vcsCmd += " -kdb"
     if args.cov:
       vcsCmd += " -cm line+tgl+fsm+cond+branch+assert -cm_cond allops -cm_dir %s/cov.vdb" % outputDir
     logging.info("------ Starting vcs ------")
@@ -313,6 +313,7 @@ def gen(matchedList, vcsOpts, args, outputDir):
     logging.info("------ Finished ------")
   if not args.co:
     for test in matchedList:
+      simed = True
       for i in range(test["iterations"]):
         if i != 0:
           test["seed"] = random.getrandbits(31)
@@ -433,6 +434,7 @@ def extractTest(args, testList, matchedList):
           matchedList[-1]["sim_opts"] = simOpts
 
 
+simed = False
 errorCnt = 0
 def main():
   """
@@ -451,34 +453,41 @@ def main():
     vcsOpts = {}
     testList = []
     loadConfig(args, args.cfg, vcsOpts, testList)
+    if args.st:
+      testNum = 0
+      logging.info("The tests that can be executed are:")
+      for entry in testList:
+        logging.info("%d: %s"%(testNum, entry["test"]))
+        testNum += 1
 
     matchedList = []
     extractTest(args, testList, matchedList)
 
     gen(matchedList, vcsOpts, args, outputDir)
 
-    if errorCnt == 0:
-      logging.info("\n" + "\033[0;32m" +
-"==========================================\n" +
-"=  ======       =      ======== ======== =\n" +
-"=  =     =     = =     =        =        =\n" +
-"=  =     =    =   =    =        =        =\n" +
-"=  ======    = = = =   ======== ======== =\n" +
-"=  =        =       =         =        = =\n" +
-"=  =       =         =        =        = =\n" +
-"=  =       =         = ======== ======== =\n" +
-"==========================================\033[0m\n")
-    else:
-      logging.info("\n" + "\033[0;31m"
-"==========================================\n" +
-"=  =======      =      ======== =        =\n" +
-"=  =           = =        ==    =        =\n" +
-"=  =          =   =       ==    =        =\n" +
-"=  =======   = = = =      ==    =        =\n" +
-"=  =        =       =     ==    =        =\n" +
-"=  =       =         =    ==    =        =\n" +
-"=  =       =         = ======== ======== =\n" +
-"==========================================\033[0m\n")
+    if simed:
+      if errorCnt == 0:
+        logging.info("\n" + "\033[0;32m" +
+"==============================================\n" +
+"=  ======        =       ========  ========  =\n" +
+"=  =     =      = =      =         =         =\n" +
+"=  =     =     =   =     =         =         =\n" +
+"=  ======     = = = =    ========  ========  =\n" +
+"=  =         =       =          =         =  =\n" +
+"=  =        =         =         =         =  =\n" +
+"=  =        =         =  ========  ========  =\n" +
+"==============================================\033[0m\n")
+      else:
+        logging.info("\n" + "\033[0;31m"
+"==============================================\n" +
+"=  =======       =       ========  =         =\n" +
+"=  =            = =         ==     =         =\n" +
+"=  =           =   =        ==     =         =\n" +
+"=  =======    = = = =       ==     =         =\n" +
+"=  =         =       =      ==     =         =\n" +
+"=  =        =         =     ==     =         =\n" +
+"=  =        =         =  ========  ========  =\n" +
+"==============================================\033[0m\n")
 
   except KeyboardInterrupt:
     logging.info("\nExited Ctrl+C from user request.")
