@@ -318,7 +318,7 @@ def gen(matchedList, vcsOpts, args, outputDir):
           test["seed"] = random.getrandbits(31)
         simOutput = createOutput(outputDir+"/"+test["test"]+"_%s"%test["seed"], True)
         os.chdir(simOutput)
-        simTestCmd = simCmd + " +UVM_TESTNAME=%s -l %s/sim.log" % (test["test"], simOutput)
+        simTestCmd = simCmd + " +UVM_TESTNAME=%s -ntb_random_seed=%d -l %s/sim.log" % (test["test"], test["seed"], simOutput)
         if args.vpd or args.fsdb:
           simTestCmd += " -ucli -do %s/sim.tcl" % simOutput
           if args.vpd:
