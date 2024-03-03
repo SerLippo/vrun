@@ -379,8 +379,10 @@ def organizeTest(testname, testList, matchTest):
         entry : leaf test.
         testList : all test.
     """
+    testHit = False
     for entry in testList:
         if testname == entry["test"]:
+            testHit = True
             if "sim_opts" not in entry:
                 entry["sim_opts"] = ""
             if "extends" in entry:
@@ -413,6 +415,9 @@ def organizeTest(testname, testList, matchTest):
                 matchTest.update(entry)
             else:
                 matchTest.update(entry)
+    if not testHit:
+        logging.error("No testname: %s found in test list!" % testname)
+        raise Exception("Test not found.")
 
 def extractTest(args, testList, matchedList):
     """
@@ -516,6 +521,9 @@ def main():
                 testNum += 1
 
         extractTest(args, testList, matchedList)
+        logging.info("Tests that is going to be processed are:")
+        for test in matchedList:
+            logging.info(test)
 
         processVCS(args, vcsOpts, matchedList, outputDir)
 
