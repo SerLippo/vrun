@@ -284,6 +284,7 @@ def processVCS(args, vcsOpts, matchedList, outputDir):
     """
     global isSimed
     global errorCnt
+    global errorList
     if args.co is False and len(matchedList) == 0:
         return
     vloganCmd = ("vlogan -full64 -sverilog -lca -ntb_opts uvm-1.2 -timescale=1ns/1ps -kdb "
@@ -367,7 +368,8 @@ def processVCS(args, vcsOpts, matchedList, outputDir):
                     else:
                         with open("FAIL", "w") as ff:
                             ff.write("FAIL")
-                            errorCnt += 1
+                        errorCnt += 1
+                        errorList.append(simOutput)
                 logging.info("------ Finished ------")
 
 
@@ -495,6 +497,7 @@ def extractTest(args, testList, matchedList):
 isSimed = False
 vcsOptCnt = 0
 errorCnt = 0
+errorList = []
 def main():
     """
     This is the main program.
@@ -540,6 +543,8 @@ def main():
 "~~~~~~~~~ #       #    #   ####    #### ~~~~~~~~~\n" +
 "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\033[0m\n")
             else:
+                for errDir in errorList:
+                    logging.error(errDir)
                 logging.critical("\n" + "\033[0;31m"
 "~~~~~~~~~~~~~~~~~~~ TEST_FAIL ~~~~~~~~~~~~~~~~~~~~\n", +
 "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n", +
