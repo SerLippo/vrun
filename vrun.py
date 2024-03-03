@@ -10,7 +10,6 @@ TODO: >
 """
 
 import os
-import sys
 import argparse
 import subprocess
 import logging
@@ -90,18 +89,18 @@ def parseArgs(cwd):
     if not args.cfg:
         args.cfg = cwd + "/cfg/vcs.yaml"
     if not os.path.isfile(args.cfg):
-        logging.error("Didn't find vcs script's config. Please check '--config' option.")
-        sys.exit(1)
+        logging.error("Didn't find vcs script's config.")
+        raise Exception("<Config Error> Please check '--config' or '-cfg' option.")
     if args.test is not None and args.regr is not None:
         logging.error("Single case mode and Regression mode is not compatible.")
-        sys.exit(1)
+        raise Exception("<Config Error> This Script can't have -test & -regr both.")
     if not args.o:
         args.o = cwd + "/out"
     if args.co and args.so:
         logging.error("--compile_only and --simulate_only is not compatible.")
-        sys.exit(1)
+        raise Exception("<Config Error> This Script can't have -co & -so both.")
     if args.seed is not None and args.seed < 0:
-        raise ValueError("Seed must be a non-negative integer.")
+        raise ValueError("<Config Error> Seed must be a non-negative integer.")
     return args
 
 
@@ -129,23 +128,23 @@ def runCmd(cmd, tmoutSecond=600, exitOnError=True):
         )
     except subprocess.CalledProcessError:
         logging.error(ps.commuicate()[0])
-        sys.exit(1)
+        raise Exception("<Command Error> Subprocess running failed.")
     except KeyboardInterrupt:
         logging.debug("\nExited Ctrl-C from user request.")
-        sys.exit(1)
+        raise KeyboardInterrupt("<Keyboard Error> Exited Ctrl+C from user request.")
     try:
         output = ps.communicate(timeout=tmoutSecond)[0]
     except subprocess.TimeoutExpired:
         logging.error("Timeout[%ds]: %s"%(tmoutSecond, cmd))
         output = ""
         ps.kill()
-        sys.exit(1)
+        raise Exception("<Command Error> Subprocess timeout.")
     rc = ps.returncode
     if rc and rc > 0:
         logging.debug(output)
         logging.error("Error return code: %s"%rc)
         if exitOnError:
-            sys.exit(1)
+            raise Exception("<Command Error> Subprocess running failed with return code: %s."%rc)
     logging.debug(output)
     return output
 
@@ -165,7 +164,7 @@ def readYaml(yamlFile):
                     yamlData = yaml.safe_load(f)
             except yaml.YAMLError as exc:
                     logging.error(exc)
-                    sys.exit(1)
+                    raise Exception("<YAML Error> YAML data error.")
     return yamlData
 
 
@@ -191,8 +190,7 @@ def createOutput(output, clean, prefix="out_"):
     return output
 
 
-flistCnt = 0
-def loadConfig(args, cfg, vcsOpts, testList):
+def loadConfig(args, vcsOpts, testList):
     """
     Extract script config from YAML.
 
@@ -204,20 +202,20 @@ def loadConfig(args, cfg, vcsOpts, testList):
     Returns :
         Nothing
     """
-    yamlData = readYaml(cfg)
-    global flistCnt
+    yamlData = readYaml(args.cfg)
+    global vcsOptCnt
     for entry in yamlData:
         if "import" in entry:
             loadConfig(args, os.path.expandvars(entry['import']), vcsOpts, testList)
         elif "vcs" in entry:
             vcsOpts.update(entry)
-            flistCnt += 1
-            if flistCnt > 1:
+            vcsOptCnt += 1
+            if vcsOptCnt > 1:
                 logging.error("Found more than 1 vcsOpts entry in config.")
-                sys.exit(1)
+                raise Exception("<YAML Error> More than 1 vcsOpts in YAML.")
             if "flist" not in entry:
                 logging.error("Didn't find flist in vcsOpts.")
-                sys.exit(1)
+                raise Exception("<YAML Error> Didn't find flist in YAML.")
             # Compile options
             cmpOpts = ""
             if args.copt is not None:
@@ -250,7 +248,7 @@ def getEnvVar(var):
         val = os.environ[var]
     except KeyError:
         logging.warning("Please set the environment variable {}".format(var))
-        sys.exit(1)
+        raise KeyError("<Key Error> Didn't find environment value with key {}.".format(var))
     return val
 
 
@@ -271,20 +269,20 @@ def loadRegrList(regr, regrList):
             regrList.append(entry)
 
 
-def gen(matchedList, vcsOpts, args, outputDir):
+def processVCS(args, vcsOpts, matchedList, outputDir):
     """
     Run the simulator.
 
     Args:
-        matchedList : test to run.
-        vcsOpts : vcs options data.
         args : command line parser.
+        vcsOpts : vcs options data.
+        matchedList : test to run.
         outputDir : output directory.
 
     Returns:
         Nothing
     """
-    global simed
+    global isSimed
     global errorCnt
     if args.co is False and len(matchedList) == 0:
         return
@@ -317,7 +315,7 @@ def gen(matchedList, vcsOpts, args, outputDir):
         logging.info("------ Finished ------")
     if not args.co:
         for test in matchedList:
-            simed = True
+            isSimed = True
             for i in range(test["iterations"]):
                 if i != 0:
                     test["seed"] = random.getrandbits(31)
@@ -452,25 +450,28 @@ def extractTest(args, testList, matchedList):
                     matchedList[-1]["sim_opts"] = simOpts
 
 
-simed = False
+# Global Status
+isSimed = False
+vcsOptCnt = 0
 errorCnt = 0
 def main():
     """
     This is the main program.
     """
     try:
-        #cwd = os.path.dirname(os.path.realpath(__file__))
+        vcsOpts = {}
+        testList = []
+        matchedList = []
+
         cwd = os.getcwd()
-        args = parseArgs(cwd)
         FORMAT = "%(asctime)-15s %(levelname)s: %(message)s"
         logging.basicConfig(format=FORMAT,level=logging.INFO)
-        logging.info("Starting to run VCS script in cwd: %s" % cwd)
+        args = parseArgs(cwd)
+        logging.info("Starting to run VCS script in directory: %s" % cwd)
         logging.info("Output directory is %s" % os.path.expandvars(args.o))
         outputDir = createOutput(args.o, args.clean)
 
-        vcsOpts = {}
-        testList = []
-        loadConfig(args, args.cfg, vcsOpts, testList)
+        loadConfig(args, vcsOpts, testList)
         if args.st:
             testNum = 0
             logging.info("The tests that can be executed are:")
@@ -478,38 +479,37 @@ def main():
                 logging.info("%d: %s"%(testNum, entry["test"]))
                 testNum += 1
 
-        matchedList = []
         extractTest(args, testList, matchedList)
 
-        gen(matchedList, vcsOpts, args, outputDir)
+        processVCS(args, vcsOpts, matchedList, outputDir)
 
-        if simed:
+        if isSimed:
             if errorCnt == 0:
                 logging.info("\n" + "\033[0;32m" +
-"==============================================\n" +
-"=  ======        =       ========  ========  =\n" +
-"=  =     =      = =      =         =         =\n" +
-"=  =     =     =   =     =         =         =\n" +
-"=  ======     = = = =    ========  ========  =\n" +
-"=  =         =       =          =         =  =\n" +
-"=  =        =         =         =         =  =\n" +
-"=  =        =         =  ========  ========  =\n" +
-"==============================================\033[0m\n")
+"~~~~~~~~~~~~~~~~~~~ TEST_PASS ~~~~~~~~~~~~~~~~~~~\n" +
+"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n" +
+"~~~~~~~~~ #####     ##     ####    #### ~~~~~~~~~\n" +
+"~~~~~~~~~ #    #   #  #   #       #     ~~~~~~~~~\n" +
+"~~~~~~~~~ #    #  #    #   ####    #### ~~~~~~~~~\n" +
+"~~~~~~~~~ #####   ######       #       #~~~~~~~~~\n" +
+"~~~~~~~~~ #       #    #  #    #  #    #~~~~~~~~~\n" +
+"~~~~~~~~~ #       #    #   ####    #### ~~~~~~~~~\n" +
+"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\033[0m\n")
             else:
-                logging.info("\n" + "\033[0;31m"
-"==============================================\n" +
-"=  =======       =       ========  =         =\n" +
-"=  =            = =         ==     =         =\n" +
-"=  =           =   =        ==     =         =\n" +
-"=  =======    = = = =       ==     =         =\n" +
-"=  =         =       =      ==     =         =\n" +
-"=  =        =         =     ==     =         =\n" +
-"=  =        =         =  ========  ========  =\n" +
-"==============================================\033[0m\n")
+                logging.critical("\n" + "\033[0;31m"
+"~~~~~~~~~~~~~~~~~~~ TEST_FAIL ~~~~~~~~~~~~~~~~~~~~\n", +
+"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n", +
+"~~~~~~~~~~######    ##       #    #     ~~~~~~~~~~\n", +
+"~~~~~~~~~~#        #  #      #    #     ~~~~~~~~~~\n", +
+"~~~~~~~~~~#####   #    #     #    #     ~~~~~~~~~~\n", +
+"~~~~~~~~~~#       ######     #    #     ~~~~~~~~~~\n", +
+"~~~~~~~~~~#       #    #     #    #     ~~~~~~~~~~\n", +
+"~~~~~~~~~~#       #    #     #    ######~~~~~~~~~~\n", +
+"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\033[0m\n")
 
     except KeyboardInterrupt:
         logging.info("\nExited Ctrl+C from user request.")
-        sys.exit(1)
+        raise KeyboardInterrupt("<Keyboard Error> Exited Ctrl+C from user request.")
 
 
 if __name__ == "__main__":
