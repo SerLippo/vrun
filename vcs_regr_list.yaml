@@ -1,0 +1,5 @@
+- test: xxx_test
+  iterations: 5
+
+- test: yyy_test
+  iterations: 5

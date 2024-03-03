@@ -18,6 +18,7 @@
   sim_opts: xxx
 
 - test: yyy_test
+  extends: xxx_test
   seed: 123
   iterations: 5
   sim_opts: xxx

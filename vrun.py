@@ -5,11 +5,11 @@ Description: Ser_Lip's vcs command script
 TODO: >
     yaml optimize
     regr parallel logic
-    entry extends logic
     other optimize
 """
 
 import os
+import re
 import argparse
 import subprocess
 import logging
@@ -190,7 +190,7 @@ def createOutput(output, clean, prefix="out_"):
     return output
 
 
-def loadConfig(args, vcsOpts, testList):
+def loadConfig(args, cfg, vcsOpts, testList):
     """
     Extract script config from YAML.
 
@@ -202,7 +202,7 @@ def loadConfig(args, vcsOpts, testList):
     Returns :
         Nothing
     """
-    yamlData = readYaml(args.cfg)
+    yamlData = readYaml(cfg)
     global vcsOptCnt
     for entry in yamlData:
         if "import" in entry:
@@ -333,7 +333,7 @@ def processVCS(args, vcsOpts, matchedList, outputDir):
                     if args.fsdb:
                         simTestCmd += " +fsdb+autoflush +fsdb+all +fsdb+mda"
                 if test["sim_opts"] != "":
-                    simTestCmd += test["sim_opts"]
+                    simTestCmd += test["sim_opts"].strip("\n")
                 with open("sim.tcl", "w") as f:
                     if args.vpd:
                         f.write("dump -add /*\n")
@@ -357,7 +357,8 @@ def processVCS(args, vcsOpts, matchedList, outputDir):
                             if line != "UVM_ERROR :    0\n" and line != "UVM_FATAL :    0\n":
                                 em.write(line)
                         elif line.startswith("UVM_WARNING"):
-                            wm.write(line)
+                            if line != "UVM_WARNING :    0\n":
+                                wm.write(line)
                     em.close()
                     wm.close()
                     if os.path.getsize("error_message.log") == 0:
@@ -369,6 +370,49 @@ def processVCS(args, vcsOpts, matchedList, outputDir):
                             errorCnt += 1
                 logging.info("------ Finished ------")
 
+
+def organizeTest(testname, testList, matchTest):
+    """
+    origin test because of extends.
+
+    Args:
+        entry : leaf test.
+        testList : all test.
+    """
+    for entry in testList:
+        if testname == entry["test"]:
+            if "sim_opts" not in entry:
+                entry["sim_opts"] = ""
+            if "extends" in entry:
+                fatherTest = {}
+                organizeTest(entry["extends"], testList, fatherTest)
+                father = fatherTest
+                father["sim_opts"] = father["sim_opts"].strip("\n")
+                entry["sim_opts"] = entry["sim_opts"].strip("\n")
+                father["sim_opts"] = father["sim_opts"].strip()
+                entry["sim_opts"] = entry["sim_opts"].strip()
+                f_dict = {}
+                e_dict = {}
+                for f_opt in re.split(r"[ ]+", father["sim_opts"]):
+                    f_dict[f_opt.split("=")[0]] = f_opt.split("=")[1]
+                for e_opt in re.split(r"[ ]+", entry["sim_opts"]):
+                    e_dict[e_opt.split("=")[0]] = e_opt.split("=")[1]
+                for param in father:
+                    if param == "test" or param == "extends":
+                        continue
+                    elif param == "sim_opts":
+                        for key in f_dict:
+                            if key not in e_dict:
+                                e_dict[key] = f_dict[key]
+                        entry["sim_opts"] = ""
+                        for key in e_dict:
+                            entry["sim_opts"] += key + "=" + e_dict[key] + " "
+                    else:
+                        if param not in entry:
+                            entry[param] = father[param]
+                matchTest.update(entry)
+            else:
+                matchTest.update(entry)
 
 def extractTest(args, testList, matchedList):
     """
@@ -383,71 +427,63 @@ def extractTest(args, testList, matchedList):
         Nothing
     """
     if args.test is not None:
-        for entry in testList:
-            if entry["test"] == args.test:
-                matchedList.append(entry)
-                # Seed
-                if args.seed is not None:
-                    matchedList[-1]["seed"] = args.seed
-                elif "seed" in entry:
-                    matchedList[-1]["seed"] = entry["seed"]
-                else:
-                    matchedList[-1]["seed"] = random.getrandbits(31)
-                # UVM Test
-                if "uvm_test" in entry:
-                    matchedList[-1]["uvm_test"] = entry["uvm_test"]
-                # Iterations
-                if args.iter > 1:
-                    matchedList[-1]["iterations"] = args.iter
-                elif "iterations" in entry:
-                    matchedList[-1]["iterations"] = entry["iterations"]
-                else:
-                    matchedList[-1]["iterations"] = args.iter
-                # Simulation options
-                simOpts = ""
-                if args.sopt is not None:
-                    simOpts += " " + args.sopt
-                elif "sim_opts" in entry:
-                    simOpts += " " + entry["sim_opts"]
-                if args.dstep:
-                    simOpts += " " + "-gui"
-                if args.vstep:
-                    simOpts += " " + "-gui=verdi"
-                matchedList[-1]["sim_opts"] = simOpts
+        matchTest = {}
+        organizeTest(args.test, testList, matchTest)
+        # Seed
+        if args.seed is not None:
+            matchTest["seed"] = args.seed
+        elif "seed" not in matchTest:
+            matchTest["seed"] = random.getrandbits(31)
+        # UVM Test
+        # Iterations
+        if args.iter > 1:
+            matchTest["iterations"] = args.iter
+        elif "iterations" not in matchTest:
+            matchTest["iterations"] = args.iter
+        # Simulation options
+        simOpts = ""
+        if args.sopt is not None:
+            simOpts += " " + args.sopt
+        elif "sim_opts" in matchTest:
+            simOpts += " " + matchTest["sim_opts"]
+        if args.dstep:
+            simOpts += " " + "-gui"
+        if args.vstep:
+            simOpts += " " + "-gui=verdi"
+        matchTest["sim_opts"] = simOpts
+        matchedList.append(matchTest)
+
     elif args.regr is not None:
         regrList = []
         loadRegrList(args.regr, regrList)
-        for entry in testList:
-            for regrEntry in regrList:
-                if entry["test"] == regrEntry["test"]:
-                    matchedList.append(entry)
-                    # Seed
-                    if args.seed is not None:
-                        matchedList[-1]["seed"] = args.seed
-                    elif "seed" in regrEntry:
-                        matchedList[-1]["seed"] = regrEntry["seed"]
-                    elif "seed" in entry:
-                        matchedList[-1]["seed"] = entry["seed"]
-                    else:
-                        matchedList[-1]["seed"] = random.getrandbits(31)
-                    # Iterations
-                    if args.iter > 1:
-                        matchedList[-1]["iterations"] = args.iter
-                    elif "iterations" in regrEntry:
-                        matchedList[-1]["iterations"] = regrEntry["iterations"]
-                    elif "iterations" in entry:
-                        matchedList[-1]["iterations"] = entry["iterations"]
-                    else:
-                        matchedList[-1]["iterations"] = args.iter
-                    # Simulation options
-                    simOpts = ""
-                    if args.sopt is not None:
-                        simOpts += " " + args.sopt
-                    elif "sim_opts" in regrEntry:
-                        simOpts += " " + regrEntry["sim_opts"]
-                    elif "sim_opts" in entry:
-                        simOpts += " " + entry["sim_opts"]
-                    matchedList[-1]["sim_opts"] = simOpts
+        for regrEntry in regrList:
+            matchTest = {}
+            organizeTest(regrEntry["test"], testList, matchTest)
+            # Seed
+            if args.seed is not None:
+                matchTest["seed"] = args.seed
+            elif "seed" in regrEntry:
+                matchTest["seed"] = regrEntry["seed"]
+            elif "seed" not in matchTest:
+                matchTest["seed"] = random.getrandbits(31)
+            # UVM Test
+            # Iterations
+            if args.iter > 1:
+                matchTest["iterations"] = args.iter
+            elif "iterations" in regrEntry:
+                matchTest["iterations"] = regrEntry["iterations"]
+            elif "iterations" not in matchTest:
+                matchTest["iterations"] = args.iter
+            # Simulation options
+            simOpts = ""
+            if args.sopt is not None:
+                simOpts += " " + args.sopt
+            elif "sim_opts" in regrEntry:
+                simOpts += " " + regrEntry["sim_opts"]
+            elif "sim_opts" in matchTest:
+                simOpts += " " + matchTest["sim_opts"]
+            matchTest["sim_opts"] = simOpts
+            matchedList.append(matchTest)
 
 
 # Global Status
@@ -471,7 +507,7 @@ def main():
         logging.info("Output directory is %s" % os.path.expandvars(args.o))
         outputDir = createOutput(args.o, args.clean)
 
-        loadConfig(args, vcsOpts, testList)
+        loadConfig(args, args.cfg, vcsOpts, testList)
         if args.st:
             testNum = 0
             logging.info("The tests that can be executed are:")
