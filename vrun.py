@@ -451,13 +451,13 @@ def extractTest(args, testList, matchedList):
         simOpts = ""
         if args.sopt is not None:
             simOpts += " " + args.sopt
-        elif "sim_opts" in matchTest:
+        if "sim_opts" in matchTest:
             simOpts += " " + matchTest["sim_opts"]
         if args.dstep:
             simOpts += " " + "-gui"
         if args.vstep:
             simOpts += " " + "-gui=verdi"
-        matchTest["sim_opts"] = simOpts
+        matchTest["sim_opts"] = simOpts.replace("\n", " ")
         matchedList.append(matchTest)
 
     elif args.regr is not None:
@@ -485,11 +485,11 @@ def extractTest(args, testList, matchedList):
             simOpts = ""
             if args.sopt is not None:
                 simOpts += " " + args.sopt
-            elif "sim_opts" in regrEntry:
+            if "sim_opts" in regrEntry:
                 simOpts += " " + regrEntry["sim_opts"]
-            elif "sim_opts" in matchTest:
+            if "sim_opts" in matchTest:
                 simOpts += " " + matchTest["sim_opts"]
-            matchTest["sim_opts"] = simOpts
+            matchTest["sim_opts"] = simOpts.replace("\n", " ")
             matchedList.append(matchTest)
 
 
